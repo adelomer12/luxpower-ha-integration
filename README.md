@@ -173,6 +173,10 @@ Set schedules for timed operations:
 * AC Charging Start & End Times
 * Peak Shaving Start & End Times
 
+#### Buttons
+* **Refresh Data** (`button.<prefix>_refresh_data`): polls the inverter immediately instead of waiting for the next poll interval. It also re-reads the settings (hold) registers, which are normally refreshed only every few polls. The next automatic poll is rescheduled from the moment of the manual refresh, so pressing it never causes a double poll. Presses while a refresh is running, or within 5 seconds of the last one, are ignored to protect the Wi-Fi dongle. If the dongle cannot be reached the press fails with an error instead of silently showing cached values. This button is created in **Read-Only Mode** too, because it never writes to the inverter.
+* Inverter action buttons (Reboot Inverter, Clear Detected Phases, etc.): only created when Read-Only Mode is off.
+
 ## Blueprints
 
 This integration includes blueprints to help you get started with powerful automations.
