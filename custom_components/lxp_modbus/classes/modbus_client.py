@@ -154,6 +154,15 @@ class LxpModbusApiClient:
         """Get packet recovery statistics for monitoring and debugging."""
         return self._packet_recovery.get_stats()
 
+    @property
+    def last_successful_connection(self) -> float | None:
+        """Return the epoch time of the last poll that actually reached the dongle.
+
+        Unlike the coordinator's success flag this does not advance when a failed
+        poll is answered from the short-lived cache.
+        """
+        return self._last_successful_connection
+
     def request_hold_refresh(self) -> None:
         """Make the next poll re-read the hold registers.
 
