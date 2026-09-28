@@ -58,7 +58,10 @@ def coordinator(api_client):
 
 
 def make_button(coordinator, entry, api_client):
-    return LxpRefreshButton(coordinator, entry, "lxp", api_client)
+    btn = LxpRefreshButton(coordinator, entry, "lxp", api_client)
+    # Not attached to a running hass in these unit tests.
+    btn.async_write_ha_state = MagicMock()
+    return btn
 
 
 class TestRefreshButtonIdentity:
@@ -88,17 +91,17 @@ class TestRefreshButtonIdentity:
 
 
 class TestRefreshButtonPress:
-    async def test_press_forces_settings_read_and_polls(self, coordinator, entry, api_client):
+    async def test_press_polls_without_the_debouncer(self, coordinator, entry, api_client):
         btn = make_button(coordinator, entry, api_client)
 
         await btn.async_press()
 
-        api_client.request_hold_refresh.assert_called_once()
         coordinator.async_refresh.assert_awaited_once()
         # The debounced path could silently defer the poll, so it must not be used.
         coordinator.async_request_refresh.assert_not_awaited()
 
-    async def test_hold_refresh_is_requested_before_the_poll(self, coordinator, entry, api_client):
+    async def test_settings_are_left_for_the_next_scheduled_poll(self, coordinator, entry, api_client):
+        """The press reads live registers only; hold is requested afterwards."""
         order = []
         api_client.request_hold_refresh.side_effect = lambda: order.append("hold")
 
@@ -111,7 +114,30 @@ class TestRefreshButtonPress:
 
         await btn.async_press()
 
-        assert order == ["hold", "poll"]
+        assert order == ["poll", "hold"]
+
+    async def test_attributes_report_progress_and_success(self, coordinator, entry, api_client):
+        btn = make_button(coordinator, entry, api_client)
+        seen_during_poll = {}
+
+        async def refresh():
+            seen_during_poll.update(btn.extra_state_attributes)
+            api_client.last_successful_connection += 1
+
+        coordinator.async_refresh.side_effect = refresh
+        assert btn.extra_state_attributes == {
+            "refreshing": False, "last_result": None, "last_refresh": None,
+        }
+
+        await btn.async_press()
+
+        assert seen_during_poll["refreshing"] is True
+        attrs = btn.extra_state_attributes
+        assert attrs["refreshing"] is False
+        assert attrs["last_result"] == "ok"
+        assert attrs["last_refresh"] is not None
+        # Written once when the refresh starts and once when it ends.
+        assert btn.async_write_ha_state.call_count == 2
 
     async def test_press_raises_when_the_dongle_was_not_reached(self, coordinator, entry, api_client):
         """A failed poll answered from cache must not look like a successful refresh."""
@@ -120,6 +146,13 @@ class TestRefreshButtonPress:
 
         with pytest.raises(HomeAssistantError):
             await btn.async_press()
+
+        attrs = btn.extra_state_attributes
+        assert attrs["refreshing"] is False
+        assert attrs["last_result"] == "failed"
+        assert attrs["last_refresh"] is None
+        # Settings are still queued for the next poll after a failure.
+        api_client.request_hold_refresh.assert_called_once()
 
     async def test_press_during_a_running_refresh_is_ignored(self, coordinator, entry, api_client):
         release = asyncio.Event()

@@ -77,7 +77,11 @@ async def test_refresh_button_is_created_and_polls(hass, read_only):
             "button", "press", {"entity_id": entity_id}, blocking=True
         )
         assert calls["n"] == before + 1
-        assert hass.states.get(entity_id).state not in ("unknown", "unavailable")
+        state = hass.states.get(entity_id)
+        assert state.state not in ("unknown", "unavailable")
+        assert state.attributes["refreshing"] is False
+        assert state.attributes["last_result"] == "ok"
+        assert state.attributes["last_refresh"] is not None
 
         assert await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
